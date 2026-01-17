@@ -9,14 +9,25 @@ class ButtonText:
     LOSS = "Похудение"
     UP = "Набор массы"
     CURRENT = "Поддержание массы"
+    PROFILE = "📈 Профиль"
+
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
+
+class ButtonText:
+    KBY = "Рассчитать КБЖУ 🧮"
+    PROFILE = "📈 Профиль"
+
 
 def get_on_start_kb():
-    button_first = KeyboardButton(text=ButtonText.KBY)
-    button_second = KeyboardButton(text=ButtonText.EAT)
-    buttons_first_row = [button_first]
-    buttons_second_row = [button_second]
-    markup = ReplyKeyboardMarkup(keyboard=[buttons_first_row], resize_keyboard=True)
-    return markup
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=ButtonText.KBY)],
+            [KeyboardButton(text=ButtonText.PROFILE)]
+        ],
+        resize_keyboard=True
+    )
+    return kb
 
 
 def get_on_kby_kb():
