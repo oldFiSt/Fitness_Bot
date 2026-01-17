@@ -27,7 +27,8 @@ class DataBase:
             age INTEGER,
             gender VARCHAR(10),
             goal VARCHAR(20),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            points INTEGER DEFAULT 0
         );
         """
         self.cursor.execute(my_table)
@@ -45,7 +46,7 @@ class DataBase:
             weight = EXCLUDED.weight,
             age = EXCLUDED.age,
             gender = EXCLUDED.gender,
-            goal = EXCLUDED.goalq
+            goal = EXCLUDED.goal
         """
         self.cursor.execute(sql, (telegram_id, username, full_name, height, weight, age, gender, goal, created_at))
         self.conn.commit()
@@ -58,6 +59,44 @@ class DataBase:
     def close(self):
         self.cursor.close()
         self.conn.close()
+
+    def upsert_user(self, telegram_id: int, full_name: str, username: str | None = None):
+        sql = """
+              INSERT INTO users_info (telegram_id, username, full_name)
+              VALUES (%s, %s, %s) ON CONFLICT (telegram_id) DO \
+              UPDATE SET
+                  username = EXCLUDED.username, \
+                  full_name = EXCLUDED.full_name; \
+              """
+        self.cursor.execute(sql, (telegram_id, username, full_name))
+        self.conn.commit()
+
+    def add_points(self, telegram_id: int, points: int):
+        sql = "UPDATE users_info SET points = COALESCE(points,0) + %s WHERE telegram_id = %s;"
+        self.cursor.execute(sql, (points, telegram_id))
+        self.conn.commit()
+
+    def get_top(self, limit: int = 10):
+        sql = """
+              SELECT telegram_id, full_name, points
+              FROM users_info
+              ORDER BY points DESC NULLS LAST, telegram_id ASC
+                  LIMIT %s; \
+              """
+        self.cursor.execute(sql, (limit,))
+        return self.cursor.fetchall()
+
+    def get_rank(self, telegram_id: int):
+        sql = """
+              SELECT 1 + COUNT(*)
+              FROM users_info
+              WHERE COALESCE(points, 0) > (SELECT COALESCE(points, 0) \
+                                           FROM users_info \
+                                           WHERE telegram_id = %s); \
+              """
+        self.cursor.execute(sql, (telegram_id,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
 
 
 db = DataBase()
