@@ -9,14 +9,14 @@ class DataBase:
             database="postgres",
             user="postgres",
             password=config.DB_PASSWORD,
-            host = "127.0.0.1",
-            port = "5432",
+            host="127.0.0.1",
+            port="5432",
         )
         self.cursor = self.conn.cursor(cursor_factory=DictCursor)
         self.create_table()
 
     def create_table(self):
-        my_table = """
+        sql = """
         CREATE TABLE IF NOT EXISTS users_info (
             id SERIAL PRIMARY KEY,
             telegram_id BIGINT UNIQUE,
@@ -28,31 +28,155 @@ class DataBase:
             gender VARCHAR(10),
             goal VARCHAR(20),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            points INTEGER DEFAULT 0
+            points INTEGER DEFAULT 0,
+            meals_plan TEXT,
+            workouts_plan TEXT
         );
         """
-        self.cursor.execute(my_table)
+        self.cursor.execute(sql)
         self.conn.commit()
 
-    def add_user(self, telegram_id, username, full_name, height, weight, age, gender, goal, created_at=None):
+    # ─────────────────────────────
+    # USER / PROFILE
+    # ─────────────────────────────
+    def add_user(
+        self,
+        telegram_id,
+        username,
+        full_name,
+        height,
+        weight,
+        age,
+        gender,
+        goal,
+        created_at=None
+    ):
         sql = """
-              INSERT INTO users_info (telegram_id, username, full_name, height, weight, age, gender, goal, created_at)
-              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP)) ON CONFLICT (telegram_id)
-        DO \
-              UPDATE SET
-                  username = EXCLUDED.username, \
-                  full_name = EXCLUDED.full_name, \
-                  height = EXCLUDED.height, \
-                  weight = EXCLUDED.weight, \
-                  age = EXCLUDED.age, \
-                  gender = EXCLUDED.gender, \
-                  goal = EXCLUDED.goal; \
-              """
-        self.cursor.execute(sql, (telegram_id, username, full_name, height, weight, age, gender, goal, created_at))
+        INSERT INTO users_info (
+            telegram_id, username, full_name,
+            height, weight, age, gender, goal, created_at
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s, CURRENT_TIMESTAMP))
+        ON CONFLICT (telegram_id) DO UPDATE SET
+            username = EXCLUDED.username,
+            full_name = EXCLUDED.full_name,
+            height = EXCLUDED.height,
+            weight = EXCLUDED.weight,
+            age = EXCLUDED.age,
+            gender = EXCLUDED.gender,
+            goal = EXCLUDED.goal;
+        """
+        self.cursor.execute(sql, (
+            telegram_id, username, full_name,
+            height, weight, age, gender, goal, created_at
+        ))
+        self.conn.commit()
+
+    def upsert_user(self, telegram_id: int, full_name: str, username: str | None = None):
+        sql = """
+        INSERT INTO users_info (telegram_id, username, full_name)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (telegram_id) DO UPDATE SET
+            username = EXCLUDED.username,
+            full_name = EXCLUDED.full_name;
+        """
+        self.cursor.execute(sql, (telegram_id, username, full_name))
         self.conn.commit()
 
     def get_user(self, telegram_id):
-        sql = "SELECT * FROM users_info WHERE telegram_id = %s"
+        self.cursor.execute(
+            "SELECT * FROM users_info WHERE telegram_id = %s",
+            (telegram_id,)
+        )
+        return self.cursor.fetchone()
+
+    # ─────────────────────────────
+    # PLANS (ВОТ ГЛАВНОЕ)
+    # ─────────────────────────────
+    def save_meals_plan(self, telegram_id: int, plan_text: str):
+        sql = """
+        UPDATE users_info
+        SET meals_plan = %s
+        WHERE telegram_id = %s;
+        """
+        self.cursor.execute(sql, (plan_text, telegram_id))
+        self.conn.commit()
+
+    def get_meals_plan(self, telegram_id: int):
+        self.cursor.execute(
+            "SELECT meals_plan FROM users_info WHERE telegram_id = %s",
+            (telegram_id,)
+        )
+        row = self.cursor.fetchone()
+        return row["meals_plan"] if row else None
+
+    def save_workouts_plan(self, telegram_id: int, plan_text: str):
+        sql = """
+        UPDATE users_info
+        SET workouts_plan = %s
+        WHERE telegram_id = %s;
+        """
+        self.cursor.execute(sql, (plan_text, telegram_id))
+        self.conn.commit()
+
+    def get_workouts_plan(self, telegram_id: int):
+        self.cursor.execute(
+            "SELECT workouts_plan FROM users_info WHERE telegram_id = %s",
+            (telegram_id,)
+        )
+        row = self.cursor.fetchone()
+        return row["workouts_plan"] if row else None
+
+    # ─────────────────────────────
+    # POINTS / RATING
+    # ─────────────────────────────
+    def add_points(self, telegram_id: int, points: int):
+        sql = """
+        UPDATE users_info
+        SET points = COALESCE(points,0) + %s
+        WHERE telegram_id = %s;
+        """
+        self.cursor.execute(sql, (points, telegram_id))
+        self.conn.commit()
+
+    def get_top(self, limit: int = 10):
+        sql = """
+        SELECT telegram_id, full_name, points
+        FROM users_info
+        ORDER BY points DESC NULLS LAST, telegram_id ASC
+        LIMIT %s;
+        """
+        self.cursor.execute(sql, (limit,))
+        return self.cursor.fetchall()
+
+    def get_rank(self, telegram_id: int):
+        sql = """
+        SELECT 1 + COUNT(*)
+        FROM users_info
+        WHERE COALESCE(points, 0) >
+              (SELECT COALESCE(points, 0)
+               FROM users_info WHERE telegram_id = %s);
+        """
+        self.cursor.execute(sql, (telegram_id,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
+
+    def get_user_full(self, telegram_id: int):
+        sql = """
+              SELECT telegram_id, \
+                     username, \
+                     full_name, \
+                     height, \
+                     weight, \
+                     age, \
+                     gender, \
+                     goal, \
+                     points, \
+                     meals_plan, \
+                     workouts_plan
+              FROM users_info
+              WHERE telegram_id = %s; \
+              """
         self.cursor.execute(sql, (telegram_id,))
         return self.cursor.fetchone()
 
@@ -60,43 +184,7 @@ class DataBase:
         self.cursor.close()
         self.conn.close()
 
-    def upsert_user(self, telegram_id: int, full_name: str, username: str | None = None):
-        sql = """
-              INSERT INTO users_info (telegram_id, username, full_name)
-              VALUES (%s, %s, %s) ON CONFLICT (telegram_id) DO \
-              UPDATE SET
-                  username = EXCLUDED.username, \
-                  full_name = EXCLUDED.full_name; \
-              """
-        self.cursor.execute(sql, (telegram_id, username, full_name))
-        self.conn.commit()
 
-    def add_points(self, telegram_id: int, points: int):
-        sql = "UPDATE users_info SET points = COALESCE(points,0) + %s WHERE telegram_id = %s;"
-        self.cursor.execute(sql, (points, telegram_id))
-        self.conn.commit()
-
-    def get_top(self, limit: int = 10):
-        sql = """
-              SELECT telegram_id, full_name, points
-              FROM users_info
-              ORDER BY points DESC NULLS LAST, telegram_id ASC
-                  LIMIT %s; \
-              """
-        self.cursor.execute(sql, (limit,))
-        return self.cursor.fetchall()
-
-    def get_rank(self, telegram_id: int):
-        sql = """
-              SELECT 1 + COUNT(*)
-              FROM users_info
-              WHERE COALESCE(points, 0) > (SELECT COALESCE(points, 0) \
-                                           FROM users_info \
-                                           WHERE telegram_id = %s); \
-              """
-        self.cursor.execute(sql, (telegram_id,))
-        row = self.cursor.fetchone()
-        return row[0] if row else None
 
 
 db = DataBase()
