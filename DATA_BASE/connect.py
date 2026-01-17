@@ -34,20 +34,20 @@ class DataBase:
         self.cursor.execute(my_table)
         self.conn.commit()
 
-    def add_user(self, telegram_id, username, full_name, height, weight, age, gender, goal, created_at):
+    def add_user(self, telegram_id, username, full_name, height, weight, age, gender, goal, created_at=None):
         sql = """
-        INSERT INTO users_info (telegram_id, username, full_name, height, weight, age, gender, goal, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (telegram_id)
-        DO UPDATE SET
-            username = EXCLUDED.username,
-            full_name = EXCLUDED.full_name,
-            height = EXCLUDED.height,
-            weight = EXCLUDED.weight,
-            age = EXCLUDED.age,
-            gender = EXCLUDED.gender,
-            goal = EXCLUDED.goal
-        """
+              INSERT INTO users_info (telegram_id, username, full_name, height, weight, age, gender, goal, created_at)
+              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s, CURRENT_TIMESTAMP)) ON CONFLICT (telegram_id)
+        DO \
+              UPDATE SET
+                  username = EXCLUDED.username, \
+                  full_name = EXCLUDED.full_name, \
+                  height = EXCLUDED.height, \
+                  weight = EXCLUDED.weight, \
+                  age = EXCLUDED.age, \
+                  gender = EXCLUDED.gender, \
+                  goal = EXCLUDED.goal; \
+              """
         self.cursor.execute(sql, (telegram_id, username, full_name, height, weight, age, gender, goal, created_at))
         self.conn.commit()
 

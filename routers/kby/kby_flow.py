@@ -160,6 +160,17 @@ async def show_goal_result(message: Message, state: FSMContext):
     goal_data = results[goal_key]
     await state.update_data(goal=goal_key, results=results)
 
+    db.add_user(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        full_name=message.from_user.full_name,
+        height=int(data["height"]),
+        weight=float(data["weight"]),
+        age=int(data["age"]),
+        gender=data["sex"],
+        goal=goal_key
+    )
+
     text = (
         f"🎯 *Цель:* {goal_key}\n"
         f"━━━━━━━━━━━━━━\n"
