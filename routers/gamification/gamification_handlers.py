@@ -91,23 +91,3 @@ async def rating(message: Message):
     db.upsert_user(message.from_user.id, message.from_user.full_name, message.from_user.username)
     text = render_rating_md(message.from_user.id, limit=10)
     await message.answer(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main())
-
-
-@router.message(F.text == "✅ Тренировка (+10)")
-async def done_workout(message: Message):
-    db.upsert_user(message.from_user.id, message.from_user.full_name, message.from_user.username)
-    ok = db.add_points_once_per_day(message.from_user.id, 10, "workout")
-    if ok:
-        await message.answer("🔥 Засчитано! +10 очков (сегодня).", reply_markup=kb_main())
-    else:
-        await message.answer("✅ Сегодня тренировка уже засчитана. Приходи завтра 🙂", reply_markup=kb_main())
-
-
-@router.message(F.text == "✅ Питание (+5)")
-async def done_meals(message: Message):
-    db.upsert_user(message.from_user.id, message.from_user.full_name, message.from_user.username)
-    ok = db.add_points_once_per_day(message.from_user.id, 5, "meals")
-    if ok:
-        await message.answer("🍽 Отлично! +5 очков (сегодня).", reply_markup=kb_main())
-    else:
-        await message.answer("✅ Сегодня питание уже засчитано. Приходи завтра 🙂", reply_markup=kb_main())

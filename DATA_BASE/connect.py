@@ -30,7 +30,9 @@ class DataBase:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             points INTEGER DEFAULT 0,
             meals_plan TEXT,
-            workouts_plan TEXT
+            workouts_plan TEXT,
+            last_meals_point_at DATE,
+            last_workout_point_at DATE
         );
         """
         self.cursor.execute(sql)
@@ -71,6 +73,30 @@ class DataBase:
             height, weight, age, gender, goal, created_at
         ))
         self.conn.commit()
+
+    def add_points_once_per_day(self, telegram_id: int, points: int, kind: str) -> bool:
+        """
+        kind: "meals" или "workout"
+        Возвращает True если начислили, False если сегодня уже начисляли.
+        """
+        if kind not in ("meals", "workout"):
+            raise ValueError("kind must be 'meals' or 'workout'")
+
+        col = "last_meals_point_at" if kind == "meals" else "last_workout_point_at"
+
+        sql = f"""
+        UPDATE users_info
+        SET
+            points = COALESCE(points, 0) + %s,
+            {col} = CURRENT_DATE
+        WHERE telegram_id = %s
+          AND ({col} IS NULL OR {col} < CURRENT_DATE)
+        RETURNING points;
+        """
+        self.cursor.execute(sql, (points, telegram_id))
+        row = self.cursor.fetchone()
+        self.conn.commit()
+        return row is not None
 
     def upsert_user(self, telegram_id: int, full_name: str, username: str | None = None):
         sql = """

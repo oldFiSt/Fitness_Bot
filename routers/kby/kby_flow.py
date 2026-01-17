@@ -1,15 +1,16 @@
-from aiogram import Router
-from aiogram import F
+from aiogram import Router, F
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.enums import ParseMode
+from aiogram.filters import StateFilter
 
 from keyboards.common_keyboards.main_menu_kb import kb_back, kb_main
 from utils.planner import calculate_all_goals
 from DATA_BASE.connect import db
 
 router = Router()
+
 
 class KBY(StatesGroup):
     height = State()
@@ -19,6 +20,7 @@ class KBY(StatesGroup):
     activity = State()
     goal = State()
 
+
 ACTIVITY_FACTORS = {
     "Нет физической нагрузки": 1.2,
     "Лёгкие нагрузки (1–3 раза в неделю)": 1.375,
@@ -27,12 +29,13 @@ ACTIVITY_FACTORS = {
     "Спортсмен или похожие нагрузки": 1.9
 }
 
-# ✅ СТАРТ РАСЧЁТА ПО КНОПКЕ
+
 @router.message(F.text == "Рассчитать КБЖУ 🧮")
 async def start_kby(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("Введите ваш рост (см):", reply_markup=kb_back())
     await state.set_state(KBY.height)
+
 
 @router.message(KBY.height)
 async def get_height(message: Message, state: FSMContext):
@@ -47,6 +50,7 @@ async def get_height(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("Неверный формат. Введите число, например: 175", reply_markup=kb_back())
 
+
 @router.message(KBY.weight)
 async def get_weight(message: Message, state: FSMContext):
     if message.text == "⬅️ Назад":
@@ -60,6 +64,7 @@ async def get_weight(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("Неверный формат. Введите число, например: 70", reply_markup=kb_back())
 
+
 @router.message(KBY.age)
 async def get_age(message: Message, state: FSMContext):
     if message.text == "⬅️ Назад":
@@ -68,7 +73,6 @@ async def get_age(message: Message, state: FSMContext):
         return
     try:
         await state.update_data(age=int(message.text))
-
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="Мужской"), KeyboardButton(text="Женский")],
@@ -81,6 +85,7 @@ async def get_age(message: Message, state: FSMContext):
         await state.set_state(KBY.sex)
     except ValueError:
         await message.answer("Неверный формат. Введите число, например: 25", reply_markup=kb_back())
+
 
 @router.message(KBY.sex)
 async def get_sex(message: Message, state: FSMContext):
@@ -115,6 +120,7 @@ async def get_sex(message: Message, state: FSMContext):
     await message.answer("Выберите уровень активности:", reply_markup=kb)
     await state.set_state(KBY.activity)
 
+
 @router.message(KBY.activity)
 async def get_activity(message: Message, state: FSMContext):
     if message.text == "⬅️ Назад":
@@ -127,12 +133,8 @@ async def get_activity(message: Message, state: FSMContext):
         await message.answer("Выбери активность кнопкой 🙂")
         return
 
-    await state.update_data(
-        activity=factor,
-        lifestyle=message.text.strip()
-    )
+    await state.update_data(activity=factor, lifestyle=message.text.strip())
 
-    # ✅ КЛАВИАТУРА ВЫБОРА ЦЕЛИ — ВОТ ОНА
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="Похудение")],
@@ -143,14 +145,13 @@ async def get_activity(message: Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=True
     )
-
     await message.answer("Выберите цель:", reply_markup=kb)
     await state.set_state(KBY.goal)
+
 
 @router.message(KBY.goal, F.text.in_(["Похудение", "Поддержание", "Набор массы"]))
 async def show_goal_result(message: Message, state: FSMContext):
     goal = message.text.strip()
-
     goal_map = {"Похудение": "Похудение", "Поддержание": "Поддержание", "Набор массы": "Набор"}
     goal_key = goal_map[goal]
 
@@ -168,7 +169,8 @@ async def show_goal_result(message: Message, state: FSMContext):
         weight=float(data["weight"]),
         age=int(data["age"]),
         gender=data["sex"],
-        goal=goal_key
+        goal=goal_key,
+        created_at=None
     )
 
     text = (
@@ -182,3 +184,17 @@ async def show_goal_result(message: Message, state: FSMContext):
     )
     await message.answer(text, parse_mode=ParseMode.MARKDOWN, reply_markup=kb_main())
 
+
+# ✅ если FSM активен и нажали меню — выходим из FSM и просим нажать ещё раз
+@router.message(
+    ~StateFilter(None),
+    F.text.in_(["🏆 Рейтинг", "📈 Профиль", "🔁 Мои планы", "🍽 Питание", "🏋️ Тренировки"])
+)
+async def exit_fsm_and_retry(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Ок 🙂 Я вышел из ввода. Нажми кнопку ещё раз.", reply_markup=kb_main())
+
+
+@router.message(KBY.goal)
+async def goal_fallback(message: Message, state: FSMContext):
+    await message.answer("Выбери цель кнопкой 🙂")
